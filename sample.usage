@@ -1,0 +1,40 @@
+package main
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/spark451/snowman"
+	"github.com/spark451/snowman/snowplow"
+	"gopkg.in/mgo.v2/bson"
+)
+
+func main() {
+	time.Local = time.UTC
+
+	frostie := snowman.Settings{
+		SrcMgoConnectionURI: "mongodb://username:password@mongo.myserver.tld:27017/auth-db",
+		SrcMgoDatabase:      "database",
+		SrcMgoCollection:    "collection",
+		Genquery:            pageviewsWithSubdom,   //register the function that returns the query
+		Trackingfile:        "pageviewWithSubdom.etldatetime",  //filename for tracking last ETLTimestamp
+	}
+
+	frostie.MongoGet(showrecord) // Get results since the last time we got results
+
+}
+
+func pageviewsWithSubdom(lastETL time.Time) interface{} {
+	query := bson.M{"event": "pv",
+		"contexts.data": bson.M{"$elemMatch": bson.M{"schema": "iglu:com.spark451.snowplow/subdom/jsonschema/1-0-0"}},
+		"$and": []bson.M{
+			bson.M{"etl_tstamp": bson.M{"$gt": lastETL}},
+		}}
+	return query
+}
+
+func showrecord(result snowplow.Event) {
+
+	fmt.Println(result)
+
+}
