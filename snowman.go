@@ -5,12 +5,30 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/spark451/snowman/snowplow"
 
 	mgo "gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
+
+// Geo struct contains event long and lat data.
+type Geo struct {
+	Lng float32 `bson:"lng,omitempty"`
+	Lat float32 `bson:"lat,omitempty"`
+}
+
+// MongoEvent struct contains snowplow event data
+type MongoEvent struct {
+	ID             bson.ObjectId `bson:"_id,omitempty"`
+	snowplow.Event `bson:",inline"`
+	MongoUserID    bson.ObjectId `bson:"userid_mgo,omitempty"`
+	GeoCoord       Geo           `bson:"geo_coord,omitempty"`
+}
 
 // Settings defines the properites of the library for pulling the most recent
 // events from the snowplow collection matching the particular query fed by
@@ -25,7 +43,24 @@ type Settings struct {
 }
 
 //MongoGet pulls latest data from DB according to query function set in Genquery
-func (f *Settings) MongoGet(processRecord func(snowplow.Event)) {
+func (f *Settings) MongoGet(processRecord func(MongoEvent) error) {
+	// Handle interupt and sigterm so that pre-mature killing of the program
+	// can pick up where it left off.
+	sigs := make(chan os.Signal, 1)
+	done := make(chan bool, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		_ = <-sigs
+		done <- true
+		fmt.Println("Signal received...")
+		time.Sleep(5 * time.Second)
+		fmt.Println("...force cleanup")
+		f.saveposition()
+		os.Exit(1)
+	}()
+
+	// If there is a tracking file specified, load its position and prepare
+	// to save its position.
 	if len(f.Trackingfile) > 0 {
 		lderr := f.loadposition()
 		if lderr != nil {
@@ -33,22 +68,36 @@ func (f *Settings) MongoGet(processRecord func(snowplow.Event)) {
 		}
 		defer f.saveposition()
 	}
-	var result snowplow.Event
+
+	var result MongoEvent
 	session, err := mgo.Dial(f.SrcMgoConnectionURI)
 	if err != nil {
 		panic(err)
 	}
 	defer session.Close()
 
-	// Optional. Switch the session to a monotonic behavior.
+	// Switch the session to a monotonic behavior.
 	session.SetMode(mgo.Monotonic, true)
 
 	c := session.DB(f.SrcMgoDatabase).C(f.SrcMgoCollection)
-	iter := c.Find(f.Genquery(f.lastETL)).Iter()
+	iter := c.Find(f.Genquery(f.lastETL)).Sort("etl_tstamp").Iter()
+
+	// Iterate events and call processRecord function passed
+iterator:
 	for iter.Next(&result) {
-		processRecord(result)
-		if f.lastETL.Before(result.ETLTimestamp) {
-			f.lastETL = result.ETLTimestamp
+		select {
+		case <-done:
+			fmt.Println("Cleaning up...")
+			break iterator
+		default:
+			err := processRecord(result)
+			if err != nil { // There was an error processing, stop here
+				fmt.Println(err)
+				break
+			}
+			if f.lastETL.Before(result.ETLTimestamp) {
+				f.lastETL = result.ETLTimestamp
+			}
 		}
 	}
 	if ierr := iter.Close(); ierr != nil {
@@ -57,10 +106,13 @@ func (f *Settings) MongoGet(processRecord func(snowplow.Event)) {
 
 }
 
+// Save lastETL position in specified file
 func (f *Settings) saveposition() {
 	_ = ioutil.WriteFile(f.Trackingfile, []byte(f.lastETL.String()), 0644)
+	fmt.Println("Saving position: ", f.lastETL.String())
 }
 
+// Load lastETL position from specified file
 func (f *Settings) loadposition() error {
 	dat, ferr := ioutil.ReadFile(f.Trackingfile)
 	if ferr != nil {
