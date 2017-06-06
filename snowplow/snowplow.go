@@ -31,7 +31,7 @@ type Event struct {
 	// User and visit
 	UserID           string `json:"uid,omitempty" bson:"user_id,omitempty"`
 	UserIPAddress    string `json:"ip,omitempty" bson:"user_ipaddress"`
-	UserFingerprint  string `bson:"user_fingerprint,omitempty"`
+	UserFingerprint  string `json:"fp,omitempty" bson:"user_fingerprint,omitempty"`
 	DomainUserID     string `json:"duid,omitempty" bson:"domain_userid,omitempty"`
 	DomainSessionIDX int16  `bson:"domain_sessionidx,omitempty"`
 	NetworkUserID    string `json:"tnuid,omitempty" bson:"network_userid,omitempty"`
