@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/remeh/sizedwaitgroup"
 	"github.com/spark451/snowman/snowplow"
 
 	mgo "gopkg.in/mgo.v2"
@@ -40,6 +41,7 @@ type Settings struct {
 	SrcMgoConnectionURI string
 	Genquery            func(time.Time) interface{}
 	Trackingfile        string
+	Threads             int
 }
 
 //MongoGet pulls latest data from DB according to query function set in Genquery
@@ -82,6 +84,10 @@ func (f *Settings) MongoGet(processRecord func(MongoEvent) error) {
 	c := session.DB(f.SrcMgoDatabase).C(f.SrcMgoCollection)
 	iter := c.Find(f.Genquery(f.lastETL)).Sort("etl_tstamp").Iter()
 
+	// Prepare for multiple threads
+
+	swg := sizedwaitgroup.New(f.Threads)
+
 	// Iterate events and call processRecord function passed
 iterator:
 	for iter.Next(&result) {
@@ -90,11 +96,9 @@ iterator:
 			fmt.Println("Cleaning up...")
 			break iterator
 		default:
-			err := processRecord(result)
-			if err != nil { // There was an error processing, stop here
-				fmt.Println(err)
-				break
-			}
+			swg.Add()
+			go procwrap(result, &swg, processRecord, done)
+
 			if f.lastETL.Before(result.ETLTimestamp) {
 				f.lastETL = result.ETLTimestamp
 			}
@@ -104,6 +108,15 @@ iterator:
 		log.Fatal(ierr)
 	}
 
+}
+
+//Wrapper for processing the results
+func procwrap(result MongoEvent, waitGroup *sizedwaitgroup.SizedWaitGroup, procfunc func(MongoEvent) error, done chan<- bool) {
+	defer waitGroup.Done()
+	err := procfunc(result)
+	if err != nil {
+		done <- true
+	}
 }
 
 // Save lastETL position in specified file

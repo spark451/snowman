@@ -18,6 +18,7 @@ func main() {
 		SrcMgoCollection:    "collection",
 		Genquery:            pageviewsWithSubdom,   //register the function that returns the query
 		Trackingfile:        "pageviewWithSubdom.etldatetime",  //filename for tracking last ETLTimestamp
+		Threads:             10,                               // Number of threads allowed for the save function
 	}
 
 	frostie.MongoGet(showrecord) // Get results since the last time we got results
