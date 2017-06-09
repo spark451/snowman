@@ -107,6 +107,8 @@ iterator:
 	if ierr := iter.Close(); ierr != nil {
 		log.Fatal(ierr)
 	}
+	// Wait until all processes are done
+	swg.Wait()
 
 }
 
