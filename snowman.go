@@ -61,8 +61,8 @@ func (f *Settings) MongoGet(processRecord func(MongoEvent) error) {
 		os.Exit(1)
 	}()
 
-	// If there is a tracking file specified, load its position and prepare
-	// to save its position.
+	// If there is a tracking file specified, load its position and defer
+	// saving its position.
 	if len(f.Trackingfile) > 0 {
 		lderr := f.loadposition()
 		if lderr != nil {
@@ -81,24 +81,27 @@ func (f *Settings) MongoGet(processRecord func(MongoEvent) error) {
 	// Switch the session to a monotonic behavior.
 	session.SetMode(mgo.Monotonic, true)
 
+	// Set DB and Collection and make query.
 	c := session.DB(f.SrcMgoDatabase).C(f.SrcMgoCollection)
 	iter := c.Find(f.Genquery(f.lastETL)).Sort("etl_tstamp").Iter()
 
-	// Prepare for multiple threads
-
+	// Set max thread count.
 	swg := sizedwaitgroup.New(f.Threads)
 
-	// Iterate events and call processRecord function passed
+	// Iterate events and call processRecord function
 iterator:
 	for iter.Next(&result) {
 		select {
+		// Stop, an interupt signal was received or error occured in one of the threads
 		case <-done:
 			fmt.Println("Cleaning up...")
 			break iterator
 		default:
+			// Increment thread counter.
 			swg.Add()
+			// Wrapper for function call to process record, makes threading easier.
 			go procwrap(result, &swg, processRecord, done)
-
+			// Set our lastETL counter if this record's ETL is > than others.
 			if f.lastETL.Before(result.ETLTimestamp) {
 				f.lastETL = result.ETLTimestamp
 			}
@@ -107,7 +110,7 @@ iterator:
 	if ierr := iter.Close(); ierr != nil {
 		log.Fatal(ierr)
 	}
-	// Wait until all processes are done
+	// Wait until all threads are complete.
 	swg.Wait()
 
 }
