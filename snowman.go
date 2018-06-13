@@ -126,6 +126,9 @@ func procwrap(result MongoEvent, waitGroup *sizedwaitgroup.SizedWaitGroup, procf
 
 // Save lastETL position in specified file
 func (f *Settings) saveposition() {
+	if f.lastETL != *new(time.Time) {
+		return
+	}
 	_ = ioutil.WriteFile(f.Trackingfile, []byte(f.lastETL.String()), 0644)
 	fmt.Println("Saving position: ", f.lastETL.String())
 }
