@@ -1,6 +1,7 @@
 package snowman
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -11,10 +12,12 @@ import (
 	"time"
 
 	"github.com/remeh/sizedwaitgroup"
-	"github.com/spark451/snowman/snowplow"
+	"github.com/spark451/snowman/v2/snowplow"
 
-	mgo "gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // Geo struct contains event long and lat data.
@@ -25,10 +28,10 @@ type Geo struct {
 
 // MongoEvent struct contains snowplow event data
 type MongoEvent struct {
-	ID             bson.ObjectId `bson:"_id,omitempty"`
+	ID             primitive.ObjectID `bson:"_id,omitempty"`
 	snowplow.Event `bson:",inline"`
-	MongoUserID    bson.ObjectId `bson:"userid_mgo,omitempty"`
-	GeoCoord       Geo           `bson:"geo_coord,omitempty"`
+	MongoUserID    primitive.ObjectID `bson:"userid_mgo,omitempty"`
+	GeoCoord       Geo                `bson:"geo_coord,omitempty"`
 }
 
 // Settings defines the properites of the library for pulling the most recent
@@ -60,7 +63,6 @@ func (f *Settings) MongoGet(processRecord func(MongoEvent) error) {
 		f.saveposition()
 		os.Exit(1)
 	}()
-
 	// If there is a tracking file specified, load its position and defer
 	// saving its position.
 	if len(f.Trackingfile) > 0 {
@@ -72,25 +74,35 @@ func (f *Settings) MongoGet(processRecord func(MongoEvent) error) {
 	}
 
 	var result MongoEvent
-	session, err := mgo.Dial(f.SrcMgoConnectionURI)
+	session, err := mongo.Connect(
+		context.Background(),
+		options.Client().ApplyURI(f.SrcMgoConnectionURI),
+	)
 	if err != nil {
 		panic(err)
 	}
-	defer session.Close()
-
-	// Switch the session to a monotonic behavior.
-	session.SetMode(mgo.Monotonic, true)
+	defer session.Disconnect(context.Background())
 
 	// Set DB and Collection and make query.
-	c := session.DB(f.SrcMgoDatabase).C(f.SrcMgoCollection)
-	iter := c.Find(f.Genquery(f.lastETL)).Sort("etl_tstamp").Iter()
+	c := session.Database(f.SrcMgoDatabase).Collection(f.SrcMgoCollection)
+	iter, err := c.Find(
+		context.Background(),
+		f.Genquery(f.lastETL),
+		options.Find().SetSort(bson.D{{Key: "etl_timestamp", Value: 1}}),
+	)
+	if err != nil {
+		panic(err)
+	}
 
 	// Set max thread count.
 	swg := sizedwaitgroup.New(f.Threads)
 
 	// Iterate events and call processRecord function
 iterator:
-	for iter.Next(&result) {
+	for iter.Next(context.Background()) {
+		if err := iter.Decode(&result); err != nil {
+			log.Fatal(err)
+		}
 		select {
 		// Stop, an interupt signal was received or error occured in one of the threads
 		case <-done:
@@ -107,7 +119,7 @@ iterator:
 			}
 		}
 	}
-	if ierr := iter.Close(); ierr != nil {
+	if ierr := iter.Close(context.Background()); ierr != nil {
 		log.Fatal(ierr)
 	}
 	// Wait until all threads are complete.

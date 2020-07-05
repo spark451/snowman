@@ -120,7 +120,7 @@ type Event struct {
 	PPXOffsetMin int32 `json:"pp_mix,omitempty" bson:"pp_xoffset_min,omitempty"`
 	PPXOffsetMax int32 `json:"pp_max,omitempty" bson:"pp_xoffset_max,omitempty"`
 	PPYOffsetMin int32 `json:"pp_miy,omitempty" bson:"pp_yoffset_min,omitempty"`
-	PPYOffsetMax int32 `json:"pp_may,omitempty"bson:"pp_yoffset_max,omitempty"`
+	PPYOffsetMax int32 `json:"pp_may,omitempty" bson:"pp_yoffset_max,omitempty"`
 
 	// Temporary fields to handle string conversion from GET -> JSON requests
 	TmpPPXOffsetMin int32 `json:"string_pp_mix,string,omitempty" bson:"-"`

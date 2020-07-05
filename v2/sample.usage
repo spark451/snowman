@@ -6,7 +6,7 @@ import (
 
 	"github.com/spark451/snowman"
 	"github.com/spark451/snowman/snowplow"
-	"gopkg.in/mgo.v2/bson"
+  "go.mongodb.org/mongo-driver/bson"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func pageviewsWithSubdom(lastETL time.Time) interface{} {
 	query := bson.M{"event": "pv",
 		"contexts.data": bson.M{"$elemMatch": bson.M{"schema": "iglu:com.spark451.snowplow/subdom/jsonschema/1-0-0"}},
 		"$and": []bson.M{
-			bson.M{"etl_tstamp": bson.M{"$gt": lastETL}},
+			{"etl_tstamp": bson.M{"$gt": lastETL}},
 		}}
 	return query
 }
