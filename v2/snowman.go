@@ -88,7 +88,7 @@ func (f *Settings) MongoGet(processRecord func(MongoEvent) error) {
 	iter, err := c.Find(
 		context.Background(),
 		f.Genquery(f.lastETL),
-		options.Find().SetSort(bson.D{{Key: "etl_timestamp", Value: 1}}),
+		options.Find().SetSort(bson.D{{Key: "etl_tstamp", Value: 1}}),
 	)
 	if err != nil {
 		panic(err)
