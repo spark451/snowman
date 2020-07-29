@@ -73,7 +73,6 @@ func (f *Settings) MongoGet(processRecord func(MongoEvent) error) {
 		defer f.saveposition()
 	}
 
-	var result MongoEvent
 	session, err := mongo.Connect(
 		context.Background(),
 		options.Client().ApplyURI(f.SrcMgoConnectionURI),
@@ -100,6 +99,7 @@ func (f *Settings) MongoGet(processRecord func(MongoEvent) error) {
 	// Iterate events and call processRecord function
 iterator:
 	for iter.Next(context.Background()) {
+		var result MongoEvent
 		if err := iter.Decode(&result); err != nil {
 			log.Fatal(err)
 		}
