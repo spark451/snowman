@@ -22,8 +22,8 @@ import (
 
 // Geo struct contains event long and lat data.
 type Geo struct {
-	Lng float32 `bson:"lng,omitempty"`
-	Lat float32 `bson:"lat,omitempty"`
+	Lng float32 `bson:"lng"`
+	Lat float32 `bson:"lat"`
 }
 
 // MongoEvent struct contains snowplow event data
@@ -31,7 +31,7 @@ type MongoEvent struct {
 	ID             primitive.ObjectID `bson:"_id,omitempty"`
 	snowplow.Event `bson:",inline"`
 	MongoUserID    primitive.ObjectID `bson:"userid_mgo,omitempty"`
-	GeoCoord       Geo                `bson:"geo_coord,omitempty"`
+	GeoCoord       *Geo               `bson:"geo_coord,omitempty"`
 }
 
 // Settings defines the properites of the library for pulling the most recent
